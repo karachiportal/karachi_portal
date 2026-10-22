@@ -1,0 +1,8 @@
+.idea/
+.opencode/
+.vscode/
+*_plan.md
+*.log
+.DS_Store
+Thumbs.db
+terminal.txt
