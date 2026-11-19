@@ -16,9 +16,6 @@ Route::prefix('auth')->group(function () {
     Route::post('/login',    [AuthController::class, 'login']);
 });
 
-// Public complaint tracking (no login needed)
-Route::get('/complaints/track/{complaintNumber}', [ComplaintController::class, 'track']);
-
 // Public price list (no login needed to browse prices)
 Route::get('/prices',              [PriceController::class, 'index']);
 Route::get('/prices/categories',   [PriceController::class, 'categories']);
@@ -43,6 +40,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/complaints',           [ComplaintController::class, 'index']);
     Route::post('/complaints',          [ComplaintController::class, 'store']);
     Route::get('/complaints/stats',     [ComplaintController::class, 'stats']);
+    // Track by complaint number (only the citizen's own complaints)
+    Route::get('/complaints/track/{complaintNumber}', [ComplaintController::class, 'track']);
     Route::get('/complaints/{id}',      [ComplaintController::class, 'show']);
 
     // Notifications

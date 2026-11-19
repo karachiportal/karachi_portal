@@ -5,10 +5,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // ── Auto-detect: Android emulator → 10.0.2.2, else → 127.0.0.1 ──
   static String get baseUrl {
-  return 'https://karachi-portal-production.up.railway.app/api';
-}
+    return 'https://karachiportal-production-aadd.up.railway.app/api';
+  }
+
   static String? _token;
 
   // ─────────────────────────────────────────────
@@ -16,6 +16,7 @@ class ApiService {
   // ─────────────────────────────────────────────
   static Future<void> saveToken(String token) async {
     _token = token;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
   }

@@ -126,12 +126,15 @@ class ComplaintController extends Controller
     }
 
     // ─────────────────────────────────────────────
-    //  TRACK by complaint number (public, no auth)
+    //  TRACK by complaint number (own complaints only)
     // ─────────────────────────────────────────────
-    public function track($complaintNumber): JsonResponse
+    public function track(Request $request, $complaintNumber): JsonResponse
     {
+        // A citizen can track only complaints filed from their own account.
+        // Someone else's number gives the same 404 as a number that does not exist.
         $complaint = Complaint::with(['pictures', 'statusLogs'])
             ->where('complaint_number', $complaintNumber)
+            ->where('user_id', $request->user()->id)
             ->firstOrFail();
 
         return response()->json([

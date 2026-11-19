@@ -1,7 +1,7 @@
 # Commissioner Karachi Portal — Complete Project Documentation
 
-**Version:** 1.1.0  
-**Last Updated:** 30 May 2026  
+**Version:** 1.2.0<br>
+**Last Updated:** 31 May 2026<br>
 **Project Type:** Public Grievance & Price Monitoring System for Commissioner Karachi Office
 
 ---
@@ -21,7 +21,7 @@
 11. [Demo Credentials](#11-demo-credentials)
 12. [Setup & Installation](#12-setup--installation)
 13. [Seeded Data](#13-seeded-data)
-14. [Recent Changes (v1.1.0)](#14-recent-changes-v110)
+14. [Recent Changes (v1.2.0)](#14-recent-changes-v120)
 
 ---
 
@@ -29,7 +29,7 @@
 
 The **Commissioner Karachi Portal** is a bilingual (English/Urdu) public service platform consisting of:
 
-- **Mobile App (Flutter):** For citizens to browse daily price lists of essential commodities, file price-related complaints with GPS location and photos, track complaint status by complaint number (public), receive notifications, and view price trends.
+- **Mobile App (Flutter):** For citizens to browse daily price lists of essential commodities, file price-related complaints with GPS location and photos, track their own complaint status by complaint number (login required), receive notifications, and view price trends.
 - **Backend API (Laravel):** RESTful API serving data to the mobile app and admin panel. Handles authentication, complaint management, price CRUD, notifications, Excel import/export of prices, and complaint tracking.
 - **Web Admin Panel (Laravel Blade):** Session-based admin dashboard with two roles — **Admin** (full CRUD) and **Viewer** (read-only). Manage complaints, price lists (categories & items), bulk update prices, import/export via Excel, broadcast notifications, view price update logs, recycle bin for soft-deleted records.
 
@@ -166,16 +166,18 @@ karachi_portal/
 │   │   │   ├── price_search_page.dart# Price search + trend chart + stats
 │   │   │   ├── file_complaint_page.dart # Complaint form (GPS + photos)
 │   │   │   ├── my_complaints_page.dart  # User's complaints + detail view
-│   │   │   ├── track_complaint_page.dart# Track complaint by number (public)
+│   │   │   ├── track_complaint_page.dart# Track own complaint by number (login required)
 │   │   │   └── notifications_page.dart  # Notifications + Profile page
 │   │   ├── services/                 # API service layer
 │   │   │   ├── api_service.dart      # Base HTTP client (GET/POST/PUT/multipart)
 │   │   │   ├── auth_service.dart     # Login/Register/Logout/User session
 │   │   │   ├── complaint_service.dart# Complaint CRUD + trackComplaint()
 │   │   │   ├── price_service.dart    # Price list, search, trend API
-│   │   │   └── notification_service.dart  # Notifications (no AnnouncementService)
+│   │   │   ├── notification_service.dart  # Notifications (no AnnouncementService)
+│   │   │   └── cache_service.dart    # SharedPreferences wrapper (offline caching)
 │   │   └── widgets/
-│   │       └── shared_widgets.dart   # AppBar, BottomNav, StatusBadge, SectionHeader
+│   │       ├── shared_widgets.dart   # AppBar, BottomNav, StatusBadge, SectionHeader
+│   │       └── offline_banner.dart   # Network status indicator banner
 │   ├── test/                         # Unit/widget tests
 │   │   └── widget_test.dart
 │   ├── web/                          # Web platform
@@ -206,6 +208,7 @@ karachi_portal/
 │   │   │   ├── User.php               # User with isAdmin() and isViewer() helpers
 │   │   │   ├── Complaint.php          # Complaint with status scopes
 │   │   │   ├── ComplaintPicture.php   # Complaint photo attachments
+│   │   │   ├── ComplaintStatusLog.php # Status change audit trail
 │   │   │   ├── PriceCategory.php      # Price categories with items relation
 │   │   │   ├── PriceItem.php          # Price items with category + history
 │   │   │   ├── PriceHistory.php       # Historical price records
@@ -362,11 +365,11 @@ Sets up `MaterialApp` with:
 - Empty state with "File a Complaint" button
 - Floating action button for new complaint
 
-#### `track_complaint_page.dart` — Track Complaint (Public)
+#### `track_complaint_page.dart` — Track Complaint (Login Required)
 - Search card with complaint number input field
-- **No login required** — public API endpoint
+- **Sanctum token required** — citizen can track only complaints filed from their own account
 - Result card showing: complaint number, status badge, name, CNIC, mobile, item, shop, location, description
-- Error state if complaint number not found
+- Error state if complaint number does not exist or belongs to another user
 
 #### `notifications_page.dart` — Notifications + Profile
 - **Notifications tab:** List with type-based icons (complaint_update, price_alert, announcement, system), read/unread state, "Mark all read" button
@@ -375,7 +378,7 @@ Sets up `MaterialApp` with:
 ### 5.3 Services
 
 #### `api_service.dart` — Base HTTP Client
-- Auto-detection: Android emulator → `10.0.2.2:8000`, else → `127.0.0.1:8000`
+- Production Railway backend URL: `https://karachiportal-production-aadd.up.railway.app/api`
 - Token management via `SharedPreferences`
 - Methods: `get()`, `post()`, `put()`, `postMultipart()`
 - Generic error handling (SocketException, 401 auto-logout, server errors)
@@ -393,7 +396,7 @@ Sets up `MaterialApp` with:
 - `getComplaintDetail(id)`
 - `fileComplaint()` with multipart fields + pictures
 - `getDashboardStats()`
-- `trackComplaint(number)` — public API for tracking by complaint number
+- `trackComplaint(number)` — authenticated API for tracking own complaint by number
 
 #### `price_service.dart` — Prices API
 - `getCategories()`
@@ -463,7 +466,7 @@ PriceItem {
 | `store()` | `POST /api/complaints` | Sanctum | File complaint (multipart with up to 5 pics) |
 | `show()` | `GET /api/complaints/{id}` | Sanctum | Complaint detail |
 | `stats()` | `GET /api/complaints/stats` | Sanctum | User's complaint stats |
-| `track()` | `GET /api/complaints/track/{complaintNumber}` | Public | Track complaint by number |
+| `track()` | `GET /api/complaints/track/{complaintNumber}` | Sanctum | Track own complaint by number |
 | `adminIndex()` | `GET /api/admin/complaints` | Admin | All complaints (filterable by status, search, date) |
 | `updateStatus()` | `PUT /api/admin/complaints/{id}/status` | Admin | Update status + admin remarks |
 | `adminStats()` | `GET /api/admin/dashboard/stats` | Admin | Dashboard statistics |
@@ -746,6 +749,17 @@ All admin routes are under `/admin/` prefix and protected by `auth` + `admin.web
 | read_at | TIMESTAMP | NULLABLE |
 | created_at / updated_at | TIMESTAMP | |
 
+#### `complaint_status_logs`
+| Column | Type | Constraints |
+|---|---|---|
+| id | BIGINT UNSIGNED | PK |
+| complaint_id | BIGINT UNSIGNED | FK → complaints.id, CASCADE DELETE |
+| old_status | VARCHAR(50) | NULLABLE |
+| new_status | VARCHAR(50) | |
+| changed_by | BIGINT UNSIGNED | FK → users.id, NULL ON DELETE |
+| remarks | TEXT | NULLABLE |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
+
 *(`announcements` table removed in v1.1.0)*
 
 ### 8.2 Laravel System Tables
@@ -781,9 +795,8 @@ price_categories ──┬── price_items ──┬── price_histories
 
 ### Base URL
 ```
-http://localhost:8000/api
+https://karachiportal-production-aadd.up.railway.app/api
 ```
-For Android emulator: `http://10.0.2.2:8000/api`
 
 ### Response Format
 ```json
@@ -821,10 +834,6 @@ For Android emulator: `http://10.0.2.2:8000/api`
 - **`GET /api/prices/{id}`** — Single item detail
 - **`GET /api/prices/{id}/trend?period=7days|30days|3months`** — Price history + stats
 
-#### Track Complaint
-- **`GET /api/complaints/track/{complaintNumber}`** — Public complaint tracking by number (e.g., CMPL-2026-00001)
-  - Response: `{ success: true, data: { complaint_number, full_name, cnic, mobile, item_name, shop_name, location_address, details, status, created_at } }`
-
 ### Protected Endpoints (Sanctum Token)
 
 **Header:** `Authorization: Bearer {token}`
@@ -840,6 +849,8 @@ For Android emulator: `http://10.0.2.2:8000/api`
 - **`POST /api/complaints`** — Multipart: fields + `pictures[0..4]` (max 5 images)
 - **`GET /api/complaints/stats`** — `{ total, pending, in_progress, resolved }`
 - **`GET /api/complaints/{id}`** — Complaint detail with pictures
+- **`GET /api/complaints/track/{complaintNumber}`** — Track only the authenticated citizen's complaint by number (e.g., `CMPL-2026-00001`)
+  - Response: `{ success: true, data: { complaint_number, full_name, cnic, mobile, item_name, shop_name, location_address, details, status, created_at } }`
 
 #### Notifications
 - **`GET /api/notifications`** — User's notifications (paginated)
@@ -955,8 +966,8 @@ cd flutter
 # Install dependencies
 flutter pub get
 
-# Update API base URL in lib/services/api_service.dart
-# (Android emulator auto-detects 10.0.2.2:8000)
+# Production API base URL is set in lib/services/api_service.dart
+# https://karachiportal-production-aadd.up.railway.app/api
 
 # Run on connected device/emulator
 flutter run
@@ -1011,13 +1022,14 @@ Includes Rice, Wheat Flour, Onion, Tomato, Potato, Chicken, Beef, Mutton, Eggs, 
 ### Price History
 Each seeded item gets 7 days of price history with randomized variance for realistic trend charts.
 
-### 2 System Users
+### 3 Seeded Users
 - **Admin User** (`admin` / `Admin@12345`) — Full admin access
+- **Viewer** (`viewer` / `Viewer@12345`) — Read-only admin access
 - **Demo Citizen** (`demo_citizen` / `Demo@1234`) — Standard citizen account with sample complaints
 
 ---
 
-## 14. Recent Changes (v1.1.0)
+## 14. Recent Changes (v1.2.0)
 
 ### Removed
 - **Announcement feature fully decommissioned:**
@@ -1032,11 +1044,23 @@ Each seeded item gets 7 days of price history with randomized variance for reali
   - Announcements links removed from Flutter home page and notifications page
 
 ### Added
-- **Track Complaint (Public API):**
-  - `GET /api/complaints/track/{complaintNumber}` — No auth required
+- **Track Complaint (Authenticated API):**
+  - `GET /api/complaints/track/{complaintNumber}` — Sanctum token required; own complaints only
   - `Flutter` → `pages/track_complaint_page.dart` with input + result card
   - `services/complaint_service.dart` → `trackComplaint()` method
   - Quick access button replaces Announcements in home page
+
+- **Offline Caching:**
+  - `services/cache_service.dart` wraps `SharedPreferences` for cached dashboard and price data
+  - `widgets/offline_banner.dart` shows network status on Home, My Complaints, Price List, and Notifications pages
+
+- **Complaint Status History:**
+  - `ComplaintStatusLog` model + `complaint_status_logs` migration
+  - Status changes are logged from both API and admin complaint controllers
+
+- **Custom Launcher Icons:**
+  - `flutter_launcher_icons` configured with `assets/icons/app_icon.png` and `app_icon_foreground.png`
+  - Android and iOS launcher icons generated
 
 - **Excel Import/Export for Prices:**
   - `app/Exports/PriceItemExport.php` — Download all or per-category price list (.xlsx)
@@ -1064,6 +1088,8 @@ Each seeded item gets 7 days of price history with randomized variance for reali
   - Dashboard shows recent price updates
 
 ### Changed
+- `api_service.dart` — production API base URL set to `https://karachiportal-production-aadd.up.railway.app/api`
+- Complaint tracking route moved under `auth:sanctum`; citizens can track only their own complaints
 - `AdminAuthController::login()` — now accepts `staff` role for viewer login
 - `ComplaintAdminController::updateStatus()` — protected by `denyIfViewer()`
 - `NotificationAdminController::broadcast()` — protected by `denyIfViewer()`
